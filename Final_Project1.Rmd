@@ -1,0 +1,84 @@
+---
+title: "Final Project: MHV68 Gene Expression in Wild-Type vs. Viral Cyclin-KO"
+author: "Ashley Knox, Hayley Sparks, Sarah Stonedahl"
+date: "Spring, 2017"
+output: html_document http://rpubs.com/knoxas/272468
+
+---
+
+##Overview
+A murine fibroblast cell line (3T12) was infected with either a wild-type murine gammaherpesvirus (MHV68) or with a viral cyclin (v-cyclin) knock-out strain of the virus. After infection, RNA seq data was collected for both the host and viral genes to evaluate gene expression. We used the data for the viral genes to determine differences in expression between the wild-type and mutant MHV68 during infection.
+
+## Step 1. Load packages and the data
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = "#>")
+```
+
+```{r packages, message = FALSE}
+library(tidyverse)
+library(knitr)
+library(stringr)
+library(cowplot)
+library(RColorBrewer)
+library(gtools)
+library(readr)
+All_genes_raw <- read_csv("~/R/final-projects/All_genes_raw.csv")
+View(All_genes_raw)
+
+```
+
+## Step 2. Tidy the data
+
+
+```{r tidy_data}
+select(All_genes_raw, 1:2, 4, 5, 7, 8) -> raw_data
+
+colnames(raw_data) <- c("Gene.Num", "Gene.Name", "WT_1", "WT_2", "cyc_1", "cyc_2")
+
+raw_data %>% gather(key, exp, WT_1:cyc_2) %>% separate(key, into = c('Treatment', 'rep'), sep = '_') %>% arrange(Gene.Num) -> tidy_data
+
+tidy_data
+```
+
+## Step 3. Calculate average gene expression for wild-type and v-cyclin-KO MHV68-treated cells 
+
+```{r mean_exp}
+tidy_data %>% group_by(Gene.Num, Gene.Name, Treatment) %>% summarise(mean.exp = mean(exp), sd.exp = sd(exp)) %>% ungroup() -> mean_exp_data
+
+mean_exp_data
+
+```
+
+## Step 4. Calculate the fold-change in gene expression  
+
+
+```{r fold_change}
+#Calculate fold change
+mean_exp_data %>% select(1,2,3,4) %>% spread(Treatment, value = mean.exp) %>% mutate(fc.exp = (foldchange(cyc, WT))) %>% arrange(desc(fc.exp)) -> fc_exp_data
+
+transform(fc_exp_data, Gene.Name = reorder(Gene.Name, order(fc.exp, decreasing = TRUE))) -> fc_exp_data
+fc_exp_data
+
+head(fc_exp_data, 5) -> top5_up
+
+tail(fc_exp_data, 5) -> top5_down
+```
+
+## Step 5. Graph the fold-change for the top and bottom 5 genes
+
+```{r plot}
+#A graph showing the expression trend of all genes in the data set
+ggplot(fc_exp_data, aes(x = Gene.Name, y = fc.exp, fill = Gene.Name)) + geom_bar(stat = "identity") + xlab("Gene") + ylab("Fold Change (Cyc-KO / WT)") + ggtitle("MHV Gene Expression in 3T12 Cells") + guides(fill = FALSE) + theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
+#Top 5 up-regulated genes
+ggplot(top5_up, aes(x = Gene.Name, y = fc.exp, fill = Gene.Name)) + geom_bar(stat = "identity") + scale_y_continuous(limits = c(0, 1.5)) + xlab("Gene Name") + ylab("Fold Change (Cyc-KO / WT)") + ggtitle("Up-Regulated MHV Gene Expression in 3T12 Cells") + scale_fill_brewer(type = "qual", palette = 6, direction = 1) 
+
+#Top 5 down-regulated genes
+ggplot(top5_down, aes(x = Gene.Name, y = fc.exp, fill = Gene.Name)) + geom_bar(stat = "identity") + xlab("Gene Name") + ylab("Fold Change (Cyc-KO / WT)") + scale_y_continuous(limits = c(-1.5, 0)) + ggtitle("Down-regulated MHV Gene Expression in 3T12 Cells") + scale_fill_brewer(type = "qual", palette = 6, direction = 1)  
+
+```
+
+## Summary
+The data we've analyzed here contains the gene expression data for murine gammaherpesvirus during infection of a murine fibroblast cell line (3T12). The cells were treated with either the wild-type virus or a viral-cyclin knock-out virus. We calcuated the fold-change of gene expression in the mutant virus over the wild-type virus. The average fold-change is `r mean(fc_exp_data$fc.exp)` with a standard deviation of `r sd(fc_exp_data$fc.exp)`. The maximum fold change is `r max(fc_exp_data$fc.exp)` for `r head(fc_exp_data,1) %>% select(Gene.Name)` and the minimum is `r min(fc_exp_data$fc.exp)`, which is `r tail(fc_exp_data, 1) %>% select(Gene.Name)`. Given that previous experiments have shown that viral cyclin is not required for lytic infection, it is interesting that there are several genes that are differentially expressed between the WT and V-cyclin KO viruses during infection. A couple of the most down-regulated genes are ORF18, which is a viral transcription factor required for transcription of late genes, and ORF73 (a.k.a LANA), which tethers the viral genome to the host chromosome during latency and regulates host gene expression. Interestingly, these genes are more down-regulated than the v-cyclin (ORF72) itself.
+These results indicate that the viral cyclin of this gammaherpesvirus may play a previously unknown role in viral replication during lytic infection.
